@@ -71,10 +71,10 @@ const DAILY_NN = [
     video: "https://www.youtube.com/watch?v=qq_Z7sAmVrA"
   },
   {
-    id: "couch",
-    name: "Couch stretch + overhead reach",
-    detail: "60s/side · quads + hip flexors + spine",
-    video: "https://www.youtube.com/watch?v=IioW8A3fgW0"
+    id: "spinal-waves",
+    name: "Spinal waves (Roye Gold)",
+    detail: "60–90s · isolate + integrate spinal segments",
+    video: "https://www.youtube.com/watch?v=x73Df183Pg4"
   },
   {
     id: "squat-reach",
@@ -83,9 +83,9 @@ const DAILY_NN = [
     video: "https://www.youtube.com/watch?v=lbozu0DPcYI"
   },
   {
-    id: "dead-hang",
-    name: "Dead hang",
-    detail: "45s · grip + shoulder decompression",
+    id: "passive-hang",
+    name: "Passive hang",
+    detail: "45–60s · sink shoulders to ears, relax body, active grip only",
     video: "https://www.youtube.com/watch?v=2vspW4N4BMs"
   }
 ];
