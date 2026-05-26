@@ -28,7 +28,7 @@ const DAILY_MOVES = [
   { id: "Elephant Walks",  label: "Elephant walks"     }
 ];
 
-const DAYS_OF_WEEK = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const DAYS_OF_WEEK = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const SESSION_TIERS = {
   "X3 Push": "Floor", "X3 Pull": "Floor", "Long Run": "Floor", "Bouldering": "Floor",
   "Cardio + Grip": "Standard", "Posterior Chain + Farmer's Carry": "Standard",
@@ -39,7 +39,8 @@ const SESSION_TIERS = {
 // ── State ─────────────────────────────────────
 let dailyState = {};            // { [YYYY-MM-DD]: { "Hip CARs": true, ... } }
 let weekSessions = [];          // [{ id?, date, session, tier, status }]
-let weekStartIso = null;        // YYYY-MM-DD (Monday of current week)
+let weekStartIso = null;        // YYYY-MM-DD (Sunday of current week)
+let viewingDateIso = null;      // YYYY-MM-DD — which daily-NN day the user is currently viewing
 let setSyncStatus = () => {};
 
 // ── Helpers ───────────────────────────────────
@@ -52,11 +53,10 @@ function dateIso(d) {
   const y = d.getFullYear(), m = String(d.getMonth() + 1).padStart(2,'0'), day = String(d.getDate()).padStart(2,'0');
   return `${y}-${m}-${day}`;
 }
-function weekMonday(d) {
+function weekSunday(d) {
   const out = new Date(d);
   const dow = out.getDay(); // 0 Sun, 1 Mon, ...
-  const diff = (dow + 6) % 7;
-  out.setDate(out.getDate() - diff);
+  out.setDate(out.getDate() - dow);
   out.setHours(0, 0, 0, 0);
   return out;
 }
@@ -188,14 +188,63 @@ function renderHero() {
   document.getElementById('phase-progress').style.width = Math.min(100, (elapsed / total) * 100) + '%';
 }
 
-async function renderDaily() {
-  const today = todayIso();
-  const state = dailyState[today] || {};
+async function renderDailyStrip() {
+  // 7 dots Sun-Sat for the current week, each clickable to choose viewing date
+  const strip = document.getElementById('daily-strip');
+  strip.innerHTML = '';
+  const weekStart = new Date(weekStartIso + "T00:00:00");
+  const todayStr = todayIso();
+  // Ensure all 7 days are loaded into dailyState (from cache; server fetch only for current)
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(weekStart);
+    d.setDate(d.getDate() + i);
+    const iso = dateIso(d);
+    if (!dailyState[iso]) {
+      try { dailyState[iso] = JSON.parse(localStorage.getItem('beast.daily.' + iso) || '{}'); }
+      catch (e) { dailyState[iso] = {}; }
+    }
+    const state = dailyState[iso];
+    const doneCount = DAILY_MOVES.filter(m => state[m.id]).length;
+    const isFuture = d > new Date();
+    const isToday = iso === todayStr;
+    const isViewing = iso === viewingDateIso;
+
+    const cell = document.createElement('button');
+    cell.className = 'strip-day' +
+      (isViewing ? ' viewing' : '') +
+      (isToday ? ' today' : '') +
+      (isFuture ? ' future' : '') +
+      (doneCount === DAILY_MOVES.length ? ' full' : doneCount > 0 ? ' partial' : '');
+    cell.dataset.iso = iso;
+    cell.innerHTML = `
+      <span class="strip-dow">${DAYS_OF_WEEK[i]}</span>
+      <span class="strip-count">${doneCount}/${DAILY_MOVES.length}</span>
+    `;
+    cell.addEventListener('click', () => {
+      viewingDateIso = iso;
+      renderDailyStrip();
+      renderDailyList();
+    });
+    strip.appendChild(cell);
+  }
+}
+
+async function renderDailyList() {
+  const iso = viewingDateIso;
+  const state = dailyState[iso] || {};
   const doneCount = DAILY_MOVES.filter(m => state[m.id]).length;
-  document.getElementById('daily-sub').textContent =
-    doneCount === DAILY_MOVES.length
-      ? `✅ All ${DAILY_MOVES.length} done today.`
-      : `${doneCount} / ${DAILY_MOVES.length} done today`;
+  const isToday = iso === todayIso();
+  const isPast = new Date(iso + "T23:59:59") < new Date();
+
+  // Header label for the day being viewed
+  const labelDate = new Date(iso + "T00:00:00");
+  const labelStr = labelDate.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+  const sub = document.getElementById('daily-sub');
+  if (doneCount === DAILY_MOVES.length) {
+    sub.textContent = `${labelStr} · ✅ all ${DAILY_MOVES.length} done`;
+  } else {
+    sub.textContent = `${labelStr} · ${doneCount} / ${DAILY_MOVES.length} done${isToday ? ' today' : ''}`;
+  }
 
   const list = document.getElementById('daily-list');
   list.innerHTML = '';
@@ -204,15 +253,21 @@ async function renderDaily() {
     li.className = 'check-item' + (state[move.id] ? ' done' : '');
     li.innerHTML = `<div class="check-box"></div><span class="check-label">${move.label}</span>`;
     li.addEventListener('click', async () => {
-      dailyState[today] = dailyState[today] || {};
-      dailyState[today][move.id] = !dailyState[today][move.id];
-      await saveDaily(today);
-      renderDaily();
+      dailyState[iso] = dailyState[iso] || {};
+      dailyState[iso][move.id] = !dailyState[iso][move.id];
+      await saveDaily(iso);
+      renderDailyList();
+      renderDailyStrip();
       const streak = await computeStreak();
       document.getElementById('streak-num').textContent = streak;
     });
     list.appendChild(li);
   });
+}
+
+async function renderDaily() {
+  renderDailyStrip();
+  renderDailyList();
 }
 
 function renderWeek() {
@@ -328,9 +383,10 @@ async function init() {
     dot.className = 'sync-dot' + (state ? ' ' + state : '');
   };
 
-  // Compute week boundaries
+  // Compute week boundaries (Sunday → Saturday)
   const today = new Date();
-  weekStartIso = dateIso(weekMonday(today));
+  weekStartIso = dateIso(weekSunday(today));
+  viewingDateIso = todayIso();
 
   // Initial render with cached data
   renderHero();
@@ -338,11 +394,15 @@ async function init() {
   renderWeek();
   computeStreak().then(s => { document.getElementById('streak-num').textContent = s; });
 
-  // Load from server
-  await Promise.all([
-    loadDaily(todayIso()),
-    loadWeek(weekStartIso)
-  ]);
+  // Load from server — today's checks + all this week's daily rows + this week's menu
+  const weekStart = new Date(weekStartIso + "T00:00:00");
+  const dailyLoads = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(weekStart);
+    d.setDate(d.getDate() + i);
+    dailyLoads.push(loadDaily(dateIso(d)));
+  }
+  await Promise.all([...dailyLoads, loadWeek(weekStartIso)]);
   renderDaily();
   renderWeek();
   const streak = await computeStreak();
