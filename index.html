@@ -4,252 +4,88 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#0a0a0c" />
-  <title>Beast Dashboard — Spartan Beast 2026</title>
+  <title>Beast Dashboard</title>
   <link rel="stylesheet" href="styles.css" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-  <link rel="apple-touch-icon" href="https://emojicdn.elk.sh/%F0%9F%9B%A1%EF%B8%8F">
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
 </head>
 <body>
   <main id="app">
-    <!-- Hero -->
+
+    <!-- Hero strip — countdown + phase chip -->
     <header class="hero">
-      <div class="hero-meta">
-        <span class="kicker">Spartan Beast · San Antonio</span>
-        <span class="date" id="hero-date">Nov 21, 2026 · 8:00–8:30 AM</span>
-      </div>
-      <div class="hero-countdown">
-        <div class="count-block">
-          <span class="count-num" id="days-to-beast">—</span>
-          <span class="count-label">days to Beast</span>
+      <div class="hero-row">
+        <div class="hero-left">
+          <span class="kicker">Spartan Beast</span>
+          <span class="hero-meta" id="hero-meta">— · —</span>
         </div>
-        <div class="hero-tag" id="phase-tag">—</div>
-      </div>
-      <div class="hero-progress">
-        <div class="progress-bar"><div class="progress-fill" id="phase-progress"></div></div>
-        <div class="progress-meta">
-          <span id="phase-label">—</span>
-          <span id="week-label">—</span>
+        <div class="hero-right">
+          <span class="count-big" id="days-to-beast">—</span>
+          <span class="count-lbl">days</span>
         </div>
       </div>
+      <div class="progress-bar"><div class="progress-fill" id="phase-progress"></div></div>
     </header>
 
-    <!-- This week -->
-    <section class="card week-card">
+    <!-- Today's daily non-negotiables -->
+    <section class="card daily" id="daily-card">
+      <header class="card-head">
+        <h2>Daily</h2>
+        <div class="streak" id="streak">🔥 <span id="streak-num">—</span></div>
+      </header>
+      <p class="card-sub" id="daily-sub">— / 6 done · loading…</p>
+      <ul class="checks" id="daily-list"></ul>
+    </section>
+
+    <!-- This week's menu -->
+    <section class="card week" id="week-card">
       <header class="card-head">
         <h2>This week</h2>
-        <span class="card-sub" id="week-window">—</span>
+        <span class="card-sub" id="week-range">—</span>
       </header>
-      <div class="week-grid">
-        <div class="week-field">
-          <span class="field-label">Phase</span>
-          <span class="field-value" id="week-phase">—</span>
+      <div class="week-grid" id="week-grid"></div>
+      <div class="week-foot">
+        <span id="week-stats">— done</span>
+        <button class="btn-ghost" id="add-session-btn">+ Add session</button>
+      </div>
+    </section>
+
+    <!-- Add session modal -->
+    <div class="modal-overlay" id="add-modal">
+      <div class="modal">
+        <h3>Add session</h3>
+        <label>Day</label>
+        <select id="add-day"></select>
+        <label>Session</label>
+        <select id="add-session">
+          <option value="X3 Push">X3 Push</option>
+          <option value="X3 Pull">X3 Pull</option>
+          <option value="Long Run">Long Run</option>
+          <option value="Bouldering">Bouldering</option>
+          <option value="Cardio + Grip">Cardio + Grip</option>
+          <option value="Posterior Chain + Farmer's Carry">Posterior Chain + Farmer's Carry</option>
+          <option value="Mixed Block + Bear-Hug">Mixed Block + Bear-Hug</option>
+          <option value="Daily NN">Daily NN</option>
+          <option value="Bonus">Bonus</option>
+        </select>
+        <label>Tier</label>
+        <select id="add-tier">
+          <option value="Floor">Floor</option>
+          <option value="Standard" selected>Standard</option>
+          <option value="Bonus">Bonus</option>
+        </select>
+        <div class="modal-actions">
+          <button class="btn-ghost" id="cancel-add-btn">Cancel</button>
+          <button class="btn-primary" id="save-add-btn">Add</button>
         </div>
-        <div class="week-field">
-          <span class="field-label">Week #</span>
-          <span class="field-value" id="week-num">—</span>
-        </div>
-        <div class="week-field">
-          <span class="field-label">Next race</span>
-          <span class="field-value" id="next-race">—</span>
-        </div>
-        <div class="week-field">
-          <span class="field-label">In</span>
-          <span class="field-value" id="next-race-in">—</span>
-        </div>
       </div>
-    </section>
-
-    <!-- Daily Non-Negotiables -->
-    <section class="card dnn-card">
-      <header class="card-head">
-        <h2>Daily non-negotiables</h2>
-        <span class="card-sub">~5 min · Roye / Ido style · every day</span>
-      </header>
-      <p class="card-blurb" id="dnn-streak">Tap each move as you finish. Resets at midnight.</p>
-      <ul class="dnn-list" id="dnn-list"></ul>
-      <div class="dnn-actions">
-        <button class="ghost-btn" id="dnn-reset">Reset today</button>
-      </div>
-    </section>
-
-    <!-- Weekly menu -->
-    <section class="card menu-card">
-      <header class="card-head">
-        <h2>Weekly menu</h2>
-        <span class="card-sub">assign on Sunday · execute the rest of the week</span>
-      </header>
-      <div class="tier-tabs" id="tier-tabs">
-        <button class="tier-tab active" data-tier="floor">Floor</button>
-        <button class="tier-tab" data-tier="standard">Standard</button>
-        <button class="tier-tab" data-tier="bonus">Bonus</button>
-      </div>
-      <ul class="menu-list" id="menu-list"></ul>
-      <p class="legend"><span class="legend-dot floor"></span> Floor = survives any week · <span class="legend-dot standard"></span> Standard = normal week · <span class="legend-dot bonus"></span> Bonus = green-light only</p>
-    </section>
-
-    <!-- Race ladder -->
-    <section class="card races-card">
-      <header class="card-head">
-        <h2>Race ladder</h2>
-        <span class="card-sub">paced rehearsals, not PRs</span>
-      </header>
-      <ul class="race-list" id="race-list"></ul>
-    </section>
-
-    <!-- Body maintenance -->
-    <section class="card body-card">
-      <header class="card-head">
-        <h2>Body maintenance</h2>
-        <span class="card-sub">5 weakness points → interventions</span>
-      </header>
-      <ul class="body-list" id="body-list"></ul>
-    </section>
-
-    <!-- Electrolyte protocol -->
-    <section class="card collapsible">
-      <header class="card-head" data-toggle="electrolytes">
-        <h2>Electrolyte protocol</h2>
-        <span class="toggle-icon">+</span>
-      </header>
-      <div class="collapsible-body" id="electrolytes">
-        <h3>Two components</h3>
-        <p><strong>Daily baseline</strong>: Key Nutrition electrolytes (~101mg sodium/packet)</p>
-        <p><strong>Heavy-sweat supplement</strong>: SaltStick Caps (215mg sodium / 63mg K / 22mg Mg per tablet)</p>
-
-        <h3>Training dosing</h3>
-        <table>
-          <thead><tr><th>Session</th><th>SaltStick</th></tr></thead>
-          <tbody>
-            <tr><td>Long trail run (60+ min) in summer</td><td>1–2 / hour</td></tr>
-            <tr><td>Hard X3 / mixed block, hot day</td><td>1 (optional)</td></tr>
-            <tr><td>Bouldering (indoor AC)</td><td>0</td></tr>
-            <tr><td>Indoor X3 in AC / Daily NN / dog walk</td><td>0</td></tr>
-            <tr><td>Cramp warning sign mid-effort</td><td>1 extra</td></tr>
-          </tbody>
-        </table>
-
-        <h3>Race day</h3>
-        <table>
-          <thead><tr><th>Timing</th><th>Dose</th></tr></thead>
-          <tbody>
-            <tr><td>2 hrs pre-start (5–6 AM)</td><td>2 SaltStick + 1 Key Nutrition + water</td></tr>
-            <tr><td>30 min pre-start</td><td>1 SaltStick + sip vest electrolyte</td></tr>
-            <tr><td>During race</td><td>2 SaltStick / hour</td></tr>
-            <tr><td>Cramp emergency</td><td>1 extra immediately</td></tr>
-          </tbody>
-        </table>
-
-        <p class="footnote">+ Magnesium glycinate 400–500mg nightly (cramps + sleep). Costco: Doctor's Best 100% Chelated.</p>
-      </div>
-    </section>
-
-    <!-- Shoes & vest -->
-    <section class="card collapsible">
-      <header class="card-head" data-toggle="gear">
-        <h2>Shoes &amp; vest</h2>
-        <span class="toggle-icon">+</span>
-      </header>
-      <div class="collapsible-body" id="gear">
-        <h3>Shoes</h3>
-        <table>
-          <thead><tr><th>Race</th><th>Shoe</th></tr></thead>
-          <tbody>
-            <tr><td>Beast (Nov 21)</td><td>Xero trail (LOCKED)</td></tr>
-            <tr><td>10K Jul 25</td><td>Xero / Vivo Barefoot (stress test)</td></tr>
-            <tr><td>10K Sep 12</td><td>Same UNLESS 10K feedback says pivot</td></tr>
-            <tr><td>Half Oct 4</td><td>Same as above</td></tr>
-          </tbody>
-        </table>
-        <p>If feet/calves/Achilles hurt after the Jul 25 10K → switch to Altra Escalante or Topo Phantom for 15K + half. Test in training first.</p>
-
-        <h3>Hydration vest</h3>
-        <table>
-          <thead><tr><th>Race</th><th>Vest?</th></tr></thead>
-          <tbody>
-            <tr><td>Jul 25 — 10K</td><td>❌ No (don't compound variables with barefoot road test)</td></tr>
-            <tr><td>Sep 12 — 10K</td><td>✅ Yes (practice run — full kit, low stakes)</td></tr>
-            <tr><td>Oct 4 — Half</td><td>✅ Yes (exact race-day config — Beast dress rehearsal)</td></tr>
-            <tr><td>Nov 21 — Beast</td><td>✅ Mandatory</td></tr>
-          </tbody>
-        </table>
-
-        <h3>Vest packing (Sep 12 + Oct 4)</h3>
-        <ul>
-          <li>Reservoir: water (SaltStick handles electrolytes)</li>
-          <li>Front L: gels (1/30 min)</li>
-          <li>Front R: chews</li>
-          <li>Side pocket: SaltStick tube (10 caps)</li>
-        </ul>
-      </div>
-    </section>
-
-    <!-- Sleep + diet -->
-    <section class="card collapsible">
-      <header class="card-head" data-toggle="sleep">
-        <h2>Sleep &amp; diet baseline</h2>
-        <span class="toggle-icon">+</span>
-      </header>
-      <div class="collapsible-body" id="sleep">
-        <h3>Sleep — non-negotiable</h3>
-        <ul>
-          <li>7+ hrs/night minimum</li>
-          <li>7+ hrs hard floor for 14 days pre-race (Nov 7+)</li>
-          <li>No nights past 10 PM during taper week (Nov 16–20)</li>
-          <li>Race eve: bed by 10 PM (wake 5 AM = 7 hrs)</li>
-        </ul>
-
-        <h3>Diet — starter protocol</h3>
-        <ul>
-          <li>1 default clean lunch repeated 4×/week</li>
-          <li>3 approved clean snacks for work-from-home (named, stocked, visible)</li>
-          <li>Water: 3L/day, large bottle on desk as visual reminder</li>
-          <li>Pre-bouldering: banana + protein 60 min before</li>
-          <li>Pre-trail-run: small carbs 30 min before</li>
-          <li>Daily Key Nutrition electrolytes</li>
-          <li>Magnesium glycinate 400–500mg nightly</li>
-        </ul>
-      </div>
-    </section>
-
-    <!-- Morning ritual -->
-    <section class="card collapsible">
-      <header class="card-head" data-toggle="morning">
-        <h2>Morning ritual (kid-integrated)</h2>
-        <span class="toggle-icon">+</span>
-      </header>
-      <div class="collapsible-body" id="morning">
-        <ol class="morning-flow">
-          <li><strong>6:30 AM</strong> — wake</li>
-          <li><strong>Dog walk</strong> (30–45 min, sacred dog/solo time, often before Eden's up)</li>
-          <li><strong>~7:00–7:15</strong> — return, Daily Non-Negotiables (~5 min, Eden can be present and mimic)</li>
-          <li><strong>Elephant walks</strong> (60s, hamstring active stretch)</li>
-          <li><strong>~7:30</strong> — Eitan up, day starts</li>
-          <li><strong>Big sessions</strong> (X3, runs, bouldering, mixed) → evenings / weekends</li>
-        </ol>
-        <p class="footnote">Don't force pre-dawn workouts — sleep matters more. Situational early wake only when a Friday long run requires AM (one-off).</p>
-      </div>
-    </section>
-
-    <!-- Links -->
-    <section class="card links-card">
-      <header class="card-head">
-        <h2>Links</h2>
-      </header>
-      <ul class="link-list">
-        <li><a href="https://www.notion.so/3696780ba3928160a6bcf68b117fd84b" target="_blank" rel="noopener">📘 Full plan in Notion</a></li>
-        <li><a href="https://www.spartan.com/" target="_blank" rel="noopener">🛡️ Spartan Race</a></li>
-        <li><a href="https://raceroster.com/events/2026/110988/run-for-coffee-lovers-5k10k131-san-antonio/" target="_blank" rel="noopener">🏃 Run for Coffee Lovers (10K · Jul 25)</a></li>
-        <li><a href="https://runsignup.com/Race/TX/SanAntonio/NationalChocolateDayRunForChocolatesSANANTONIO" target="_blank" rel="noopener">🍫 National Chocolate Day (10K · Sep 12)</a></li>
-        <li><a href="https://runsignup.com/Race/TX/LiveOak/DayoftheDeadHalfMarathonSanAntonio" target="_blank" rel="noopener">💀 Day of the Dead Half (Oct 4)</a></li>
-        <li><a href="https://www.notion.so/ophir-ram/1f66780ba39280e19fa2f095b08ccb85?v=1f66780ba39280f1be30000cdf312305" target="_blank" rel="noopener">🌀 Roye Gold mobility DB (full curriculum)</a></li>
-      </ul>
-    </section>
+    </div>
 
     <footer class="footer">
-      <p>Spartan Beast 2026 · Built for the engine that runs to the finish line</p>
-      <p class="footnote">Updated <span id="last-updated">—</span></p>
+      <a class="footer-link" href="https://www.notion.so/3696780ba3928160a6bcf68b117fd84b" target="_blank" rel="noopener">📘 Plan</a>
+      <a class="footer-link" href="https://www.notion.so/36c6780ba392817fa249dbc7edbbb973" target="_blank" rel="noopener">🛡 Tracking DBs</a>
+      <span class="sync-dot" id="sync-dot" title="sync status"></span>
     </footer>
   </main>
 
