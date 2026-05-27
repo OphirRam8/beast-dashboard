@@ -42,8 +42,8 @@ if not NOTION_TOKEN and ENV_FILE.exists():
             NOTION_TOKEN = line.split("=", 1)[1].strip().strip('"').strip("'")
             break
 
-DAILY_DB_ID = "a1fa0026-8926-4110-ae76-637230f45023"
-WEEKLY_DB_ID = "8aa0a203-2768-4331-a30c-e9fc6a118598"
+DAILY_DB_ID = "162397a7-cd1c-4602-b7b7-01df345dec56"
+WEEKLY_DB_ID = "3fae1f24-9529-44f6-b50f-609930aac410"
 NOTION_VERSION = "2022-06-28"
 
 WRITE_LOCK = threading.Lock()
