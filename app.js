@@ -25,16 +25,54 @@ const DAILY_MOVES = [
   { id: "Spinal Waves",    label: "Spinal waves"       },
   { id: "Bottom Squat",    label: "Bottom squat hold"  },
   { id: "Passive Hang",    label: "Passive hang"       },
-  { id: "Elephant Walks",  label: "Elephant walks"     }
+  { id: "Elephant Walks",  label: "Elephant walks"     },
+  { id: "Burpees",         label: "Burpees", dynamicLabel: () => `Burpees ×${burpeeTargetToday()}` }
 ];
 
-const DAYS_OF_WEEK = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const SESSION_TIERS = {
-  "X3 Push": "Floor", "X3 Pull": "Floor", "Long Run": "Floor", "Bouldering": "Floor",
-  "Cardio + Grip": "Standard", "Posterior Chain + Farmer's Carry": "Standard",
-  "Mixed Block + Bear-Hug": "Standard",
-  "Daily NN": "Floor", "Bonus": "Bonus"
+// Burpee ladder — periodized to peak with fitness, taper down for race
+const BURPEE_TARGETS = {
+  "Reset": 10,
+  "Foundation": 15,
+  "Build": 20,
+  "Peak": 30,
+  "Taper": 15,
+  "Race Week": 10,
+  "Beast Day": 0
 };
+function burpeeTargetToday() {
+  const phase = getPhase(new Date());
+  return BURPEE_TARGETS[phase.name] ?? 15;
+}
+
+const DAYS_OF_WEEK = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+// Modalities — Required has weekly count targets; Mix is no-target tracking
+// Hill Repeats is required ONLY in Build + Peak phases (phase-aware target)
+const MODALITIES = {
+  required: [
+    { id: "X3 Push",      target: 1, tier: "Floor" },
+    { id: "X3 Pull",      target: 1, tier: "Floor" },
+    { id: "Long Run",     target: 1, tier: "Floor" },
+    { id: "Bouldering",   target: 2, tier: "Floor" },
+    { id: "Hill Repeats", target: () => ["Build","Peak"].includes(getPhase(new Date()).name) ? 1 : 0, tier: "Standard" }
+  ],
+  mix: [
+    { id: "Jump Rope",       tier: "Standard" },
+    { id: "Farmer's Carry",  tier: "Standard" },
+    { id: "Bucket Carry",    tier: "Standard" },
+    { id: "Sledgehammer",    tier: "Standard" },
+    { id: "Boxing",          tier: "Standard" },
+    { id: "Nordic Curls",    tier: "Standard" },
+    { id: "Burpees (extra)", tier: "Bonus"    }
+  ]
+};
+function modalityTarget(m) {
+  return typeof m.target === 'function' ? m.target() : m.target;
+}
+function modalityTier(id) {
+  const m = MODALITIES.required.find(x => x.id === id) || MODALITIES.mix.find(x => x.id === id);
+  return m ? m.tier : "Standard";
+}
 
 // ── State ─────────────────────────────────────
 let dailyState = {};            // { [YYYY-MM-DD]: { "Hip CARs": true, ... } }
@@ -42,6 +80,8 @@ let weekSessions = [];          // [{ id?, date, session, tier, status }]
 let weekStartIso = null;        // YYYY-MM-DD (Sunday of current week)
 let viewingDateIso = null;      // YYYY-MM-DD — which daily-NN day the user is currently viewing
 let setSyncStatus = () => {};
+let planData = null;            // loaded from data/plan.json
+let planViewWeek = null;        // which week# the Weekly Focus modal is showing
 
 // ── Helpers ───────────────────────────────────
 function todayIso() {
@@ -251,7 +291,8 @@ async function renderDailyList() {
   DAILY_MOVES.forEach(move => {
     const li = document.createElement('li');
     li.className = 'check-item' + (state[move.id] ? ' done' : '');
-    li.innerHTML = `<div class="check-box"></div><span class="check-label">${move.label}</span>`;
+    const labelText = move.dynamicLabel ? move.dynamicLabel() : move.label;
+    li.innerHTML = `<div class="check-box"></div><span class="check-label">${labelText}</span>`;
     li.addEventListener('click', async () => {
       dailyState[iso] = dailyState[iso] || {};
       dailyState[iso][move.id] = !dailyState[iso][move.id];
@@ -277,9 +318,20 @@ function renderWeek() {
   const fmtDay = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   document.getElementById('week-range').textContent = `${fmtDay(weekStart)} – ${fmtDay(weekEnd)}`;
 
+  renderStillOwed();
+  renderDayGrid(weekStart);
+  renderModalityTracker();
+
+  // Bottom stats
+  const doneCount = weekSessions.filter(s => s.status === 'Done').length;
+  const total = weekSessions.length;
+  document.getElementById('week-stats').textContent =
+    total === 0 ? 'no sessions yet' : `${doneCount} / ${total} done`;
+}
+
+function renderDayGrid(weekStart) {
   const grid = document.getElementById('week-grid');
   grid.innerHTML = '';
-
   const todayStr = todayIso();
   for (let i = 0; i < 7; i++) {
     const d = new Date(weekStart);
@@ -288,7 +340,13 @@ function renderWeek() {
     const sessionsForDay = weekSessions.filter(s => s.date === iso);
 
     const div = document.createElement('div');
-    div.className = 'week-day' + (iso === todayStr ? ' today' : '');
+    div.className = 'week-day clickable' + (iso === todayStr ? ' today' : '');
+    div.dataset.iso = iso;
+    // Tap anywhere on the day row (except a chip) opens the log modal for that day
+    div.addEventListener('click', (e) => {
+      if (e.target.closest('.session-chip')) return;
+      openAddModal(iso);
+    });
 
     const label = document.createElement('div');
     label.className = 'day-label';
@@ -300,51 +358,115 @@ function renderWeek() {
     if (sessionsForDay.length === 0) {
       const empty = document.createElement('span');
       empty.className = 'empty-day';
-      empty.textContent = '—';
+      empty.textContent = '+ tap to log';
       sessions.appendChild(empty);
     } else {
-      sessionsForDay.forEach((s, idx) => {
+      sessionsForDay.forEach((s) => {
         const chip = document.createElement('span');
         chip.className = 'session-chip' + (s.status === 'Done' ? ' done' : s.status === 'Skipped' ? ' skipped' : '');
-        const tierKey = (s.tier || 'Standard').toLowerCase();
+        const tierKey = (s.tier || modalityTier(s.session) || 'Standard').toLowerCase();
         chip.innerHTML = `<span class="tier-dot ${tierKey}"></span><span>${s.session}</span><span class="chip-x">×</span>`;
-
         chip.addEventListener('click', async (e) => {
+          e.stopPropagation();
           if (e.target.classList.contains('chip-x')) {
-            // Delete this session
             weekSessions = weekSessions.filter(ws => ws !== s);
             await saveWeek(weekStartIso);
             renderWeek();
             return;
           }
-          // Cycle status: Planned → Done → Skipped → Planned
           const cycle = { 'Planned': 'Done', 'Done': 'Skipped', 'Skipped': 'Planned' };
           s.status = cycle[s.status || 'Planned'] || 'Done';
           await saveWeek(weekStartIso);
           renderWeek();
         });
-
         sessions.appendChild(chip);
       });
     }
-
     div.appendChild(label);
     div.appendChild(sessions);
     grid.appendChild(div);
   }
-
-  // Stats
-  const doneCount = weekSessions.filter(s => s.status === 'Done').length;
-  const total = weekSessions.length;
-  document.getElementById('week-stats').textContent =
-    total === 0 ? 'no sessions yet' : `${doneCount} / ${total} done this week`;
 }
 
-// ── Add-session modal ─────────────────────────
-function openAddModal() {
+function modalityStats(id) {
+  const matches = weekSessions.filter(s => s.session === id);
+  const days = matches.map(s => {
+    const d = new Date(s.date + "T00:00:00");
+    return { dow: DAYS_OF_WEEK[d.getDay()], status: s.status };
+  });
+  return { count: matches.length, days };
+}
+
+function renderStillOwed() {
+  const owed = document.getElementById('still-owed');
+  const items = [];
+  MODALITIES.required.forEach(m => {
+    const target = modalityTarget(m);
+    if (target <= 0) return; // skip modalities not required this phase
+    const { count } = modalityStats(m.id);
+    const missing = target - count;
+    if (missing > 0) items.push(`${missing}× ${m.id}`);
+  });
+  if (items.length === 0) {
+    owed.className = 'still-owed all-done';
+    owed.innerHTML = `<span class="owed-icon">✓</span><span>Required menu complete</span>`;
+  } else {
+    owed.className = 'still-owed';
+    owed.innerHTML = `<span class="owed-icon">⚠</span><span class="owed-label">Owed:</span> <span class="owed-items">${items.join(' · ')}</span>`;
+  }
+}
+
+function renderModalityTracker() {
+  const tracker = document.getElementById('modality-tracker');
+  tracker.innerHTML = '';
+
+  function makeRow(mod, includeTarget) {
+    const { count, days } = modalityStats(mod.id);
+    const target = includeTarget ? modalityTarget(mod) : 0;
+    const useTarget = includeTarget && target > 0;
+    let status;
+    if (useTarget) {
+      if (count > target) status = 'over';
+      else if (count === target) status = 'done';
+      else if (count > 0) status = 'partial';
+      else status = 'todo';
+    } else {
+      status = count > 0 ? 'logged' : 'empty';
+    }
+    const icon = { over:'✨', done:'✅', partial:'⚠️', todo:'❌', logged:'·', empty:'·' }[status];
+    const countText = useTarget ? `${count}/${target}` : `${count}`;
+
+    const row = document.createElement('div');
+    row.className = `modality-row status-${status}`;
+    row.innerHTML = `
+      <span class="mod-icon">${icon}</span>
+      <span class="mod-name">${mod.id}</span>
+      <span class="mod-count">${countText}</span>
+      <span class="mod-days">${days.map(d => `<span class="mod-day-chip ${d.status === 'Done' ? 'done' : d.status === 'Skipped' ? 'skipped' : ''}">${d.dow}</span>`).join('')}</span>
+    `;
+    return row;
+  }
+
+  const reqLabel = document.createElement('div');
+  reqLabel.className = 'modality-section-label';
+  reqLabel.textContent = 'Required';
+  tracker.appendChild(reqLabel);
+  MODALITIES.required.forEach(m => tracker.appendChild(makeRow(m, true)));
+
+  const mixLabel = document.createElement('div');
+  mixLabel.className = 'modality-section-label';
+  mixLabel.textContent = 'Mix & match';
+  tracker.appendChild(mixLabel);
+  MODALITIES.mix.forEach(m => tracker.appendChild(makeRow(m, false)));
+}
+
+// ── Log-session modal ─────────────────────────
+function openAddModal(presetDate) {
+  // Day picker
   const sel = document.getElementById('add-day');
   sel.innerHTML = '';
   const weekStart = new Date(weekStartIso + "T00:00:00");
+  const defaultIso = presetDate || todayIso();
   for (let i = 0; i < 7; i++) {
     const d = new Date(weekStart);
     d.setDate(d.getDate() + i);
@@ -352,24 +474,94 @@ function openAddModal() {
     const opt = document.createElement('option');
     opt.value = iso;
     opt.textContent = `${DAYS_OF_WEEK[i]} (${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })})`;
-    if (iso === todayIso()) opt.selected = true;
+    if (iso === defaultIso) opt.selected = true;
     sel.appendChild(opt);
   }
-  // Auto-tier based on session
-  document.getElementById('add-session').onchange = () => {
-    const s = document.getElementById('add-session').value;
-    document.getElementById('add-tier').value = SESSION_TIERS[s] || 'Standard';
-  };
+
+  // Render modality checkbox groups
+  function buildCheckboxes(container, list) {
+    container.innerHTML = '';
+    list.forEach(m => {
+      const { count } = modalityStats(m.id);
+      const t = modalityTarget(m);
+      const isMet = t > 0 && count >= t;
+      const label = document.createElement('label');
+      label.className = 'modality-cb' + (isMet ? ' met' : '');
+      const targetHint = t > 0 ? ` <span class="cb-target">${count}/${t}</span>` : (count > 0 ? ` <span class="cb-target">×${count}</span>` : '');
+      label.innerHTML = `<input type="checkbox" value="${m.id}"><span class="cb-mark"></span><span class="cb-name">${m.id}${targetHint}</span>`;
+      container.appendChild(label);
+    });
+  }
+  buildCheckboxes(document.getElementById('add-required'), MODALITIES.required);
+  buildCheckboxes(document.getElementById('add-mix'), MODALITIES.mix);
+
   document.getElementById('add-modal').classList.add('open');
 }
+
 function closeAddModal() {
   document.getElementById('add-modal').classList.remove('open');
 }
+
+// ── Weekly Focus modal ─────────────────────────
+async function loadPlan() {
+  try {
+    const r = await fetch('data/plan.json');
+    if (r.ok) planData = await r.json();
+  } catch (e) { console.warn('plan.json fetch failed', e); }
+}
+
+function openPlanModal(weekNum) {
+  if (!planData) return;
+  const wk = weekNum != null ? weekNum : getWeekNum(new Date());
+  planViewWeek = wk;
+  renderPlanModal();
+  document.getElementById('plan-modal').classList.add('open');
+}
+
+function closePlanModal() {
+  document.getElementById('plan-modal').classList.remove('open');
+}
+
+function renderPlanModal() {
+  const wk = planViewWeek;
+  const data = planData && planData.weeks[String(wk)];
+  if (!data) {
+    document.getElementById('plan-weeknum').textContent = '—';
+    document.getElementById('plan-phase').textContent = wk < 0 ? 'Pre-plan' : 'Post-Beast';
+    document.getElementById('plan-theme').textContent = 'No plan entry';
+    document.getElementById('plan-intent').textContent = '';
+    document.getElementById('plan-run-target').textContent = '—';
+    document.getElementById('plan-dont-miss').textContent = '—';
+    return;
+  }
+  document.getElementById('plan-weeknum').textContent = wk === 0 ? 'Reset' : `Week ${wk} / 26`;
+  document.getElementById('plan-phase').textContent = data.phase;
+  document.getElementById('plan-theme').textContent = data.theme || '—';
+  document.getElementById('plan-intent').textContent = data.intent || '';
+  document.getElementById('plan-run-target').textContent = data.runTarget || '—';
+  document.getElementById('plan-dont-miss').textContent = data.dontMiss || '—';
+
+  // Disable nav buttons at edges
+  document.getElementById('plan-prev').disabled = wk <= 0;
+  document.getElementById('plan-next').disabled = wk >= 26;
+}
+
 async function saveAdd() {
   const date = document.getElementById('add-day').value;
-  const session = document.getElementById('add-session').value;
-  const tier = document.getElementById('add-tier').value;
-  weekSessions.push({ date, session, tier, status: 'Planned' });
+  const checked = Array.from(document.querySelectorAll('#add-required input:checked, #add-mix input:checked'))
+    .map(cb => cb.value);
+  if (checked.length === 0) {
+    closeAddModal();
+    return;
+  }
+  // Auto-status: today/past → Done, future → Planned
+  const todayStart = new Date(todayIso() + "T00:00:00");
+  const selDate = new Date(date + "T00:00:00");
+  const status = selDate > todayStart ? 'Planned' : 'Done';
+
+  for (const session of checked) {
+    weekSessions.push({ date, session, tier: modalityTier(session), status });
+  }
   await saveWeek(weekStartIso);
   closeAddModal();
   renderWeek();
@@ -408,8 +600,22 @@ async function init() {
   const streak = await computeStreak();
   document.getElementById('streak-num').textContent = streak;
 
+  // Load plan + wire up Weekly Focus modal
+  await loadPlan();
+  document.getElementById('hero-tappable').addEventListener('click', () => openPlanModal());
+  document.getElementById('plan-close-btn').addEventListener('click', closePlanModal);
+  document.getElementById('plan-modal').addEventListener('click', (e) => {
+    if (e.target.id === 'plan-modal') closePlanModal();
+  });
+  document.getElementById('plan-prev').addEventListener('click', () => {
+    if (planViewWeek > 0) { planViewWeek--; renderPlanModal(); }
+  });
+  document.getElementById('plan-next').addEventListener('click', () => {
+    if (planViewWeek < 26) { planViewWeek++; renderPlanModal(); }
+  });
+
   // Wire up buttons
-  document.getElementById('add-session-btn').addEventListener('click', openAddModal);
+  document.getElementById('add-session-btn').addEventListener('click', () => openAddModal());
   document.getElementById('cancel-add-btn').addEventListener('click', closeAddModal);
   document.getElementById('save-add-btn').addEventListener('click', saveAdd);
   document.getElementById('add-modal').addEventListener('click', (e) => {

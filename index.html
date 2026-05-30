@@ -2,8 +2,16 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <meta name="theme-color" content="#0a0a0c" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Beast" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
+  <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png" />
+  <link rel="manifest" href="manifest.webmanifest" />
   <title>Beast Dashboard</title>
   <link rel="stylesheet" href="styles.css" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -13,12 +21,17 @@
 <body>
   <main id="app">
 
-    <!-- Hero strip — countdown + phase chip -->
-    <header class="hero">
+    <!-- Hero strip — countdown + phase chip + Spartan helmet (tap to open weekly plan) -->
+    <header class="hero" id="hero-tappable" role="button" tabindex="0">
       <div class="hero-row">
         <div class="hero-left">
-          <span class="kicker">Spartan Beast</span>
-          <span class="hero-meta" id="hero-meta">— · —</span>
+          <div class="hero-brand">
+            <img class="spartan-logo" src="spartan-logo.png" alt="Spartan Race logo" />
+            <div class="hero-text">
+              <span class="kicker">Spartan Beast</span>
+              <span class="hero-meta" id="hero-meta">— · —</span>
+            </div>
+          </div>
         </div>
         <div class="hero-right">
           <span class="count-big" id="days-to-beast">—</span>
@@ -45,40 +58,68 @@
         <h2>This week</h2>
         <span class="card-sub" id="week-range">—</span>
       </header>
+
+      <!-- Still-owed banner — only visible when red items exist -->
+      <div id="still-owed" class="still-owed"></div>
+
+      <!-- Day grid (Sun-Sat, chips per day) -->
       <div class="week-grid" id="week-grid"></div>
+
+      <!-- Modality tracker — required vs mix, with day chips -->
+      <div id="modality-tracker" class="modality-tracker"></div>
+
       <div class="week-foot">
         <span id="week-stats">— done</span>
-        <button class="btn-ghost" id="add-session-btn">+ Add session</button>
+        <button class="btn-ghost" id="add-session-btn">+ Log session</button>
       </div>
     </section>
 
-    <!-- Add session modal -->
+    <!-- Log session modal — multi-select checkboxes -->
     <div class="modal-overlay" id="add-modal">
       <div class="modal">
-        <h3>Add session</h3>
+        <h3>Log session</h3>
         <label>Day</label>
         <select id="add-day"></select>
-        <label>Session</label>
-        <select id="add-session">
-          <option value="X3 Push">X3 Push</option>
-          <option value="X3 Pull">X3 Pull</option>
-          <option value="Long Run">Long Run</option>
-          <option value="Bouldering">Bouldering</option>
-          <option value="Cardio + Grip">Cardio + Grip</option>
-          <option value="Posterior Chain + Farmer's Carry">Posterior Chain + Farmer's Carry</option>
-          <option value="Mixed Block + Bear-Hug">Mixed Block + Bear-Hug</option>
-          <option value="Daily NN">Daily NN</option>
-          <option value="Bonus">Bonus</option>
-        </select>
-        <label>Tier</label>
-        <select id="add-tier">
-          <option value="Floor">Floor</option>
-          <option value="Standard" selected>Standard</option>
-          <option value="Bonus">Bonus</option>
-        </select>
+
+        <div class="modality-section">
+          <label class="modality-section-label">Required</label>
+          <div class="modality-checks" id="add-required"></div>
+        </div>
+        <div class="modality-section">
+          <label class="modality-section-label">Mix &amp; match</label>
+          <div class="modality-checks" id="add-mix"></div>
+        </div>
+
         <div class="modal-actions">
           <button class="btn-ghost" id="cancel-add-btn">Cancel</button>
-          <button class="btn-primary" id="save-add-btn">Add</button>
+          <button class="btn-primary" id="save-add-btn">Log</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Weekly Focus modal — opens on hero tap -->
+    <div class="modal-overlay" id="plan-modal">
+      <div class="modal plan-modal">
+        <div class="plan-modal-head">
+          <button class="plan-nav prev" id="plan-prev" aria-label="Previous week">‹</button>
+          <div class="plan-title">
+            <span class="plan-weeknum" id="plan-weeknum">—</span>
+            <span class="plan-phase" id="plan-phase">—</span>
+          </div>
+          <button class="plan-nav next" id="plan-next" aria-label="Next week">›</button>
+        </div>
+        <h3 class="plan-theme" id="plan-theme">—</h3>
+        <p class="plan-intent" id="plan-intent">—</p>
+        <div class="plan-row">
+          <span class="plan-row-label">Run Target</span>
+          <span class="plan-row-value" id="plan-run-target">—</span>
+        </div>
+        <div class="plan-row dont-miss">
+          <span class="plan-row-label">Don't Miss</span>
+          <span class="plan-row-value" id="plan-dont-miss">—</span>
+        </div>
+        <div class="modal-actions">
+          <button class="btn-ghost" id="plan-close-btn">Close</button>
         </div>
       </div>
     </div>
