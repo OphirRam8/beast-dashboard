@@ -7,11 +7,11 @@
    ============================================ */
 
 const BEAST_DATE = new Date("2026-11-21T08:00:00-06:00");
-const W1_START = new Date("2026-06-01T00:00:00-05:00");
+const W1_START = new Date("2026-05-31T00:00:00-05:00");
 const TOTAL_WEEKS = 26;
 const PHASES = [
-  { name: "Reset",      start: "2026-05-17", end: "2026-05-31" },
-  { name: "Foundation", start: "2026-06-01", end: "2026-07-26" },
+  { name: "Reset",      start: "2026-05-17", end: "2026-05-30" },
+  { name: "Foundation", start: "2026-05-31", end: "2026-07-26" },
   { name: "Build",      start: "2026-07-27", end: "2026-09-20" },
   { name: "Peak",       start: "2026-09-21", end: "2026-11-01" },
   { name: "Taper",      start: "2026-11-02", end: "2026-11-15" },
