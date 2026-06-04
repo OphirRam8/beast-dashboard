@@ -78,6 +78,8 @@ function modalityTier(id) {
 let dailyState = {};            // { [YYYY-MM-DD]: { "Hip CARs": true, ... } }
 let weekSessions = [];          // [{ id?, date, session, tier, status }]
 let weekStartIso = null;        // YYYY-MM-DD (Sunday of current week)
+let weekDirty = false;          // unsynced local edits exist?
+let pendingChanges = 0;         // count since last sync (for the Sync button label)
 let viewingDateIso = null;      // YYYY-MM-DD — which daily-NN day the user is currently viewing
 let setSyncStatus = () => {};
 let planData = null;            // loaded from data/plan.json
@@ -167,21 +169,80 @@ async function saveDaily(date) {
 }
 
 async function loadWeek(weekStart) {
+  // Unsynced local edits win — don't clobber them with server data.
+  if (localStorage.getItem('beast.week.' + weekStart + '.dirty') === '1') {
+    try { weekSessions = JSON.parse(localStorage.getItem('beast.week.' + weekStart) || '[]'); }
+    catch (e) { weekSessions = []; }
+    weekDirty = true; updateSyncButton();
+    return;
+  }
   const data = await api('GET', `/api/weekly?week=${weekStart}`);
   if (data && Array.isArray(data.sessions)) {
     weekSessions = data.sessions;
   } else {
-    try {
-      const cached = JSON.parse(localStorage.getItem('beast.week.' + weekStart) || '[]');
-      weekSessions = cached;
-    } catch (e) { weekSessions = []; }
+    try { weekSessions = JSON.parse(localStorage.getItem('beast.week.' + weekStart) || '[]'); }
+    catch (e) { weekSessions = []; }
   }
+  // Drop exact-duplicate rows left behind by the old auto-sync race (stacks of
+  // identical chips). If we cleaned any, mark the week dirty so a Sync pushes the
+  // de-duped list back to Notion and clears them at the source.
+  const before = weekSessions.length;
+  weekSessions = dedupeSessions(weekSessions);
   try { localStorage.setItem('beast.week.' + weekStart, JSON.stringify(weekSessions)); } catch(e) {}
+  if (weekSessions.length < before) {
+    weekDirty = true;
+    try { localStorage.setItem('beast.week.' + weekStart + '.dirty', '1'); } catch(e) {}
+  } else {
+    weekDirty = false;
+  }
+  updateSyncButton();
 }
 
 async function saveWeek(weekStart) {
   try { localStorage.setItem('beast.week.' + weekStart, JSON.stringify(weekSessions)); } catch(e) {}
   await api('POST', '/api/weekly', { week: weekStart, sessions: weekSessions });
+}
+
+// ── Manual sync (no more auto-push-on-every-tap → no race → no duplicates) ──
+function dedupeSessions(arr) {
+  const seen = new Set(); const out = [];
+  for (const s of (arr || [])) {
+    const k = [s.date, s.session, s.tier, s.status].join('|');
+    if (seen.has(k)) continue;
+    seen.add(k); out.push(s);
+  }
+  return out;
+}
+function markDirty() {
+  weekDirty = true; pendingChanges++;
+  try {
+    localStorage.setItem('beast.week.' + weekStartIso, JSON.stringify(weekSessions));
+    localStorage.setItem('beast.week.' + weekStartIso + '.dirty', '1');
+  } catch (e) {}
+  updateSyncButton();
+}
+function updateSyncButton() {
+  const btn = document.getElementById('sync-week-btn');
+  if (!btn) return;
+  if (weekDirty) {
+    btn.textContent = pendingChanges > 0 ? `⤴ Sync (${pendingChanges})` : '⤴ Sync';
+    btn.classList.remove('hidden', 'synced'); btn.classList.add('dirty'); btn.disabled = false;
+  } else {
+    btn.classList.add('hidden'); btn.classList.remove('dirty', 'synced');
+  }
+}
+async function syncWeek() {
+  const btn = document.getElementById('sync-week-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '⤴ Syncing…'; btn.classList.remove('dirty'); }
+  try {
+    await saveWeek(weekStartIso);   // POST → server clears the week in Notion + rewrites it cleanly
+    weekDirty = false; pendingChanges = 0;
+    try { localStorage.removeItem('beast.week.' + weekStartIso + '.dirty'); } catch (e) {}
+    if (btn) { btn.textContent = '✓ Synced'; btn.classList.add('synced'); setTimeout(updateSyncButton, 1600); }
+  } catch (e) {
+    weekDirty = true;
+    if (btn) { btn.disabled = false; btn.classList.add('dirty'); btn.textContent = '⤴ Sync — retry'; }
+  }
 }
 
 // ── Streak calc ───────────────────────────────
@@ -327,6 +388,7 @@ function renderWeek() {
   const total = weekSessions.length;
   document.getElementById('week-stats').textContent =
     total === 0 ? 'no sessions yet' : `${doneCount} / ${total} done`;
+  updateSyncButton();
 }
 
 function renderDayGrid(weekStart) {
@@ -370,13 +432,13 @@ function renderDayGrid(weekStart) {
           e.stopPropagation();
           if (e.target.classList.contains('chip-x')) {
             weekSessions = weekSessions.filter(ws => ws !== s);
-            await saveWeek(weekStartIso);
+            markDirty();
             renderWeek();
             return;
           }
           const cycle = { 'Planned': 'Done', 'Done': 'Skipped', 'Skipped': 'Planned' };
           s.status = cycle[s.status || 'Planned'] || 'Done';
-          await saveWeek(weekStartIso);
+          markDirty();
           renderWeek();
         });
         sessions.appendChild(chip);
@@ -562,7 +624,7 @@ async function saveAdd() {
   for (const session of checked) {
     weekSessions.push({ date, session, tier: modalityTier(session), status });
   }
-  await saveWeek(weekStartIso);
+  markDirty();
   closeAddModal();
   renderWeek();
 }
@@ -615,6 +677,7 @@ async function init() {
   });
 
   // Wire up buttons
+  document.getElementById('sync-week-btn').addEventListener('click', syncWeek);
   document.getElementById('add-session-btn').addEventListener('click', () => openAddModal());
   document.getElementById('cancel-add-btn').addEventListener('click', closeAddModal);
   document.getElementById('save-add-btn').addEventListener('click', saveAdd);

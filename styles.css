@@ -442,6 +442,15 @@ main#app {
   color: var(--text-dim);
 }
 
+.hidden { display: none !important; }
+/* Manual week-sync button states */
+#sync-week-btn.dirty {
+  background: #e8a13a; color: #1c1306; border-color: #e8a13a;
+  font-weight: 800; animation: syncPulse 1.6s ease-in-out infinite;
+}
+#sync-week-btn.synced { background: #3ec46d; color: #06210f; border-color: #3ec46d; animation: none; }
+@keyframes syncPulse { 0%,100%{ opacity:1 } 50%{ opacity:.72 } }
+
 .btn-ghost {
   background: transparent;
   color: var(--gold);
