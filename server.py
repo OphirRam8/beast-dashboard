@@ -145,46 +145,54 @@ def fetch_daily_from_notion(date):
     return checks
 
 
+_weekly_sync_lock = threading.Lock()
+
 def sync_weekly_to_notion(week, sessions):
-    """Replace all rows for this week with the given list. Simpler than diffing."""
+    """Replace all rows for this week with the given list. Serialized + robust:
+    loops the archive query until no ACTIVE rows remain (handles >100 and the
+    duplicate pile-up), so it can't race-duplicate or leave stragglers."""
     if not NOTION_TOKEN:
         return
-    # Compute week date range
     import datetime as dt
     start = dt.date.fromisoformat(week)
     end = start + dt.timedelta(days=6)
 
-    # Delete existing rows in this week
-    q = notion_request(
-        "POST",
-        f"/databases/{WEEKLY_DB_ID}/query",
-        {
-            "filter": {
-                "and": [
-                    {"property": "Date", "date": {"on_or_after": start.isoformat()}},
-                    {"property": "Date", "date": {"on_or_before": end.isoformat()}},
-                ]
-            },
-            "page_size": 100,
-        },
-    )
-    if q and q.get("results"):
-        for page in q["results"]:
-            notion_request("PATCH", f"/pages/{page['id']}", {"archived": True})
+    with _weekly_sync_lock:
+        # Archive every ACTIVE existing row for this week (loop to clear them all).
+        for _ in range(40):
+            q = notion_request(
+                "POST",
+                f"/databases/{WEEKLY_DB_ID}/query",
+                {
+                    "filter": {
+                        "and": [
+                            {"property": "Date", "date": {"on_or_after": start.isoformat()}},
+                            {"property": "Date", "date": {"on_or_before": end.isoformat()}},
+                        ]
+                    },
+                    "page_size": 100,
+                },
+            )
+            results = (q or {}).get("results", [])
+            active = [p for p in results if not p.get("archived") and not p.get("in_trash")]
+            if not active:
+                break
+            for page in active:
+                notion_request("PATCH", f"/pages/{page['id']}", {"archived": True})
 
-    # Create new rows
-    for s in sessions:
-        title = f"{s.get('date')} / {s.get('session')}"
-        props = {
-            "Name": {"title": [{"text": {"content": title}}]},
-            "Date": {"date": {"start": s.get("date")}},
-            "Session": {"select": {"name": s.get("session", "Bonus")}},
-            "Tier": {"select": {"name": s.get("tier", "Standard")}},
-            "Status": {"select": {"name": s.get("status", "Planned")}},
-        }
-        if s.get("notes"):
-            props["Notes"] = {"rich_text": [{"text": {"content": s["notes"]}}]}
-        notion_request("POST", "/pages", {"parent": {"database_id": WEEKLY_DB_ID}, "properties": props})
+        # Create the new rows
+        for s in sessions:
+            title = f"{s.get('date')} / {s.get('session')}"
+            props = {
+                "Name": {"title": [{"text": {"content": title}}]},
+                "Date": {"date": {"start": s.get("date")}},
+                "Session": {"select": {"name": s.get("session", "Bonus")}},
+                "Tier": {"select": {"name": s.get("tier", "Standard")}},
+                "Status": {"select": {"name": s.get("status", "Planned")}},
+            }
+            if s.get("notes"):
+                props["Notes"] = {"rich_text": [{"text": {"content": s["notes"]}}]}
+            notion_request("POST", "/pages", {"parent": {"database_id": WEEKLY_DB_ID}, "properties": props})
 
 
 def upsert_alphi_day_to_notion(date, day_num, journal, exercises, total_reps, notes_text):
@@ -236,13 +244,15 @@ def fetch_weekly_from_notion(week):
                 ]
             },
             "sorts": [{"property": "Date", "direction": "ascending"}],
-            "page_size": 50,
+            "page_size": 100,
         },
     )
     if not q:
         return None
     sessions = []
     for page in q.get("results", []):
+        if page.get("archived") or page.get("in_trash"):
+            continue
         props = page.get("properties", {})
         date_prop = props.get("Date", {}).get("date") or {}
         session_prop = (props.get("Session", {}).get("select") or {}).get("name")
@@ -254,7 +264,17 @@ def fetch_weekly_from_notion(week):
             "tier": tier_prop,
             "status": status_prop,
         })
-    return sessions
+    # Collapse exact-duplicate rows so the duplication bug can never reach the UI,
+    # regardless of how many stray rows are still in Notion. (No data loss — only
+    # identical date+session+tier+status rows are merged.)
+    seen, deduped = set(), []
+    for s in sessions:
+        k = (s["date"], s["session"], s["tier"], s["status"])
+        if k in seen:
+            continue
+        seen.add(k)
+        deduped.append(s)
+    return deduped
 
 
 # ── HTTP handler ──────────────────────────────
