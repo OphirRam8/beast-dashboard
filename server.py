@@ -265,6 +265,14 @@ class Handler(SimpleHTTPRequestHandler):
     def log_message(self, fmt, *args):
         pass  # quiet; launchd captures stdout/stderr
 
+    def end_headers(self):
+        # Never let browsers cache the static assets, or fixes don't show up
+        # without a hard refresh. (API JSON already sets its own Cache-Control.)
+        p = self.path.split("?")[0]
+        if p.endswith((".js", ".css", ".html")) or p == "/":
+            self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+        super().end_headers()
+
     def _cors_headers(self):
         origin = self.headers.get("Origin", "")
         if origin in ALPHI_CORS_ORIGINS:

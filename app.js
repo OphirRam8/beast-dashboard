@@ -173,6 +173,7 @@ async function loadWeek(weekStart) {
   if (localStorage.getItem('beast.week.' + weekStart + '.dirty') === '1') {
     try { weekSessions = JSON.parse(localStorage.getItem('beast.week.' + weekStart) || '[]'); }
     catch (e) { weekSessions = []; }
+    weekSessions = dedupeSessions(weekSessions);   // dedupe even local/dirty data
     weekDirty = true; updateSyncButton();
     return;
   }
