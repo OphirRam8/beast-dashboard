@@ -677,11 +677,11 @@ async function init() {
     if (planViewWeek < 26) { planViewWeek++; renderPlanModal(); }
   });
 
-  // Wire up buttons
-  document.getElementById('sync-week-btn').addEventListener('click', syncWeek);
-  document.getElementById('add-session-btn').addEventListener('click', () => openAddModal());
-  document.getElementById('cancel-add-btn').addEventListener('click', closeAddModal);
-  document.getElementById('save-add-btn').addEventListener('click', saveAdd);
+  // Wire up buttons (null-safe — a missing element must never break the others)
+  document.getElementById('add-session-btn')?.addEventListener('click', () => openAddModal());
+  document.getElementById('cancel-add-btn')?.addEventListener('click', closeAddModal);
+  document.getElementById('save-add-btn')?.addEventListener('click', saveAdd);
+  document.getElementById('sync-week-btn')?.addEventListener('click', syncWeek);
   document.getElementById('add-modal').addEventListener('click', (e) => {
     if (e.target.id === 'add-modal') closeAddModal();
   });
