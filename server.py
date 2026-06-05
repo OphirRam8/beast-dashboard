@@ -19,7 +19,7 @@ import threading
 import urllib.parse
 import urllib.request
 import urllib.error
-from http.server import HTTPServer, SimpleHTTPRequestHandler
+from http.server import HTTPServer, ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 
 ROOT = Path(__file__).parent.resolve()
@@ -441,7 +441,8 @@ class Handler(SimpleHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    httpd = HTTPServer(("127.0.0.1", PORT), Handler)
+    httpd = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)   # parallel requests, no head-of-line blocking
+    httpd.daemon_threads = True
     print(f"beast-dashboard server on 127.0.0.1:{PORT}, NOTION_TOKEN set: {bool(NOTION_TOKEN)}")
     try:
         httpd.serve_forever()
