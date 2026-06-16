@@ -63,6 +63,7 @@ const MODALITIES = {
     { id: "Sledgehammer",    tier: "Standard" },
     { id: "Boxing",          tier: "Standard" },
     { id: "Nordic Curls",    tier: "Standard" },
+    { id: "Other",           tier: "Standard" },
     { id: "Burpees (extra)", tier: "Bonus"    }
   ]
 };
