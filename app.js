@@ -249,29 +249,38 @@ async function syncWeek() {
 
 // ── Streak calc ───────────────────────────────
 async function computeStreak() {
-  // Walk back from today; a "streak day" requires all 6 moves checked.
-  // Get the past 14 days of cached state for speed; fetch server if missing.
+  // Walk back from today; a "streak day" requires all moves checked.
+  // History lives in the server DB (Notion), and only the current week is
+  // pre-loaded at startup — so for older days we must fetch from the server,
+  // not just read localStorage, or the streak resets at the week boundary.
+  // Fetch in weekly batches (parallel) and stop at the first incomplete day.
   let streak = 0;
   const today = new Date();
-  for (let i = 0; i < 60; i++) {
-    const d = new Date(today);
-    d.setDate(d.getDate() - i);
-    const iso = dateIso(d);
-    if (!dailyState[iso]) {
-      // load from cache only (don't hit API for each day)
-      try {
-        dailyState[iso] = JSON.parse(localStorage.getItem('beast.daily.' + iso) || '{}');
-      } catch(e) { dailyState[iso] = {}; }
+  const BATCH = 7;
+  outer:
+  for (let base = 0; base < 120; base += BATCH) {
+    const isos = [];
+    for (let j = 0; j < BATCH; j++) {
+      const d = new Date(today);
+      d.setDate(d.getDate() - (base + j));
+      isos.push(dateIso(d));
     }
-    const state = dailyState[iso] || {};
-    const doneCount = DAILY_MOVES.filter(m => state[m.id]).length;
-    if (doneCount === DAILY_MOVES.length) {
-      streak++;
-    } else if (i === 0) {
-      // today not yet complete — streak can still continue from yesterday
-      continue;
-    } else {
-      break;
+    // Pull any days we don't already have in memory from the server (loadDaily
+    // hits /api/daily, falls back to localStorage offline, and caches the result).
+    await Promise.all(isos.map(iso => dailyState[iso] ? null : loadDaily(iso)));
+
+    for (let j = 0; j < BATCH; j++) {
+      const i = base + j;
+      const state = dailyState[isos[j]] || {};
+      const doneCount = DAILY_MOVES.filter(m => state[m.id]).length;
+      if (doneCount === DAILY_MOVES.length) {
+        streak++;
+      } else if (i === 0) {
+        // today not yet complete — streak can still continue from yesterday
+        continue;
+      } else {
+        break outer;
+      }
     }
   }
   return streak;
