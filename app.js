@@ -441,14 +441,22 @@ function renderDayGrid(weekStart) {
         chip.innerHTML = `<span class="tier-dot ${tierKey}"></span><span>${s.session}</span><span class="chip-x">×</span>`;
         chip.addEventListener('click', async (e) => {
           e.stopPropagation();
+          // Explicit × always deletes immediately
           if (e.target.classList.contains('chip-x')) {
             weekSessions = weekSessions.filter(ws => ws !== s);
             markDirty();
             renderWeek();
             return;
           }
-          const cycle = { 'Planned': 'Done', 'Done': 'Skipped', 'Skipped': 'Planned' };
-          s.status = cycle[s.status || 'Planned'] || 'Done';
+          // Tap cycles: neutral → green (Done) → red (Skipped) → delete
+          const cur = s.status || 'Planned';
+          if (cur === 'Done') {
+            s.status = 'Skipped';
+          } else if (cur === 'Skipped') {
+            weekSessions = weekSessions.filter(ws => ws !== s);  // third tap removes it
+          } else {
+            s.status = 'Done';
+          }
           markDirty();
           renderWeek();
         });
@@ -627,13 +635,9 @@ async function saveAdd() {
     closeAddModal();
     return;
   }
-  // Auto-status: today/past → Done, future → Planned
-  const todayStart = new Date(todayIso() + "T00:00:00");
-  const selDate = new Date(date + "T00:00:00");
-  const status = selDate > todayStart ? 'Planned' : 'Done';
-
+  // New sessions start neutral; tap the chip to cycle: neutral → green (Done) → red (Skipped) → delete
   for (const session of checked) {
-    weekSessions.push({ date, session, tier: modalityTier(session), status });
+    weekSessions.push({ date, session, tier: modalityTier(session), status: 'Planned' });
   }
   markDirty();
   closeAddModal();
