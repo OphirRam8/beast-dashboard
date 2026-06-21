@@ -13,7 +13,7 @@
   <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png" />
   <link rel="manifest" href="manifest.webmanifest" />
   <title>Beast Dashboard</title>
-  <link rel="stylesheet" href="styles.css?v=3" />
+  <link rel="stylesheet" href="styles.css?v=4" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
@@ -50,6 +50,10 @@
       <div class="daily-strip" id="daily-strip"></div>
       <p class="card-sub" id="daily-sub">loading…</p>
       <ul class="checks" id="daily-list"></ul>
+      <div class="daily-foot">
+        <button class="btn-ghost rest-pass-btn" id="rest-pass-btn" type="button">🩹 Rest Pass</button>
+        <span class="rest-note" id="rest-note"></span>
+      </div>
     </section>
 
     <!-- This week's menu -->
@@ -132,6 +136,6 @@
     </footer>
   </main>
 
-  <script src="app.js?v=3"></script>
+  <script src="app.js?v=4"></script>
 </body>
 </html>

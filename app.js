@@ -272,6 +272,11 @@ async function computeStreak() {
     for (let j = 0; j < BATCH; j++) {
       const i = base + j;
       const state = dailyState[isos[j]] || {};
+      // Rest Pass: a deliberate skip (e.g. injury) — bridges the streak without
+      // resetting it to 0 and without incrementing it. Neutral day.
+      if (state.__rest) {
+        continue;
+      }
       const doneCount = DAILY_MOVES.filter(m => state[m.id]).length;
       if (doneCount === DAILY_MOVES.length) {
         streak++;
@@ -317,6 +322,7 @@ async function renderDailyStrip() {
     }
     const state = dailyState[iso];
     const doneCount = DAILY_MOVES.filter(m => state[m.id]).length;
+    const isRest = !!state.__rest;
     const isFuture = d > new Date();
     const isToday = iso === todayStr;
     const isViewing = iso === viewingDateIso;
@@ -326,11 +332,11 @@ async function renderDailyStrip() {
       (isViewing ? ' viewing' : '') +
       (isToday ? ' today' : '') +
       (isFuture ? ' future' : '') +
-      (doneCount === DAILY_MOVES.length ? ' full' : doneCount > 0 ? ' partial' : '');
+      (isRest ? ' rest' : doneCount === DAILY_MOVES.length ? ' full' : doneCount > 0 ? ' partial' : '');
     cell.dataset.iso = iso;
     cell.innerHTML = `
       <span class="strip-dow">${DAYS_OF_WEEK[i]}</span>
-      <span class="strip-count">${doneCount}/${DAILY_MOVES.length}</span>
+      <span class="strip-count">${isRest ? '🩹' : doneCount + '/' + DAILY_MOVES.length}</span>
     `;
     cell.addEventListener('click', () => {
       viewingDateIso = iso;
@@ -351,8 +357,11 @@ async function renderDailyList() {
   // Header label for the day being viewed
   const labelDate = new Date(iso + "T00:00:00");
   const labelStr = labelDate.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+  const isRest = !!(dailyState[iso] && dailyState[iso].__rest);
   const sub = document.getElementById('daily-sub');
-  if (doneCount === DAILY_MOVES.length) {
+  if (isRest) {
+    sub.textContent = `${labelStr} · 🩹 Rest Pass — streak protected`;
+  } else if (doneCount === DAILY_MOVES.length) {
     sub.textContent = `${labelStr} · ✅ all ${DAILY_MOVES.length} done`;
   } else {
     sub.textContent = `${labelStr} · ${doneCount} / ${DAILY_MOVES.length} done${isToday ? ' today' : ''}`;
@@ -376,6 +385,30 @@ async function renderDailyList() {
     });
     list.appendChild(li);
   });
+
+  // Rest Pass control — mark this day a deliberate skip so the streak holds
+  const restBtn = document.getElementById('rest-pass-btn');
+  const restNote = document.getElementById('rest-note');
+  if (restBtn) {
+    const isFutureDay = new Date(iso + "T00:00:00") > new Date(todayIso() + "T23:59:59");
+    restBtn.classList.toggle('active', isRest);
+    restBtn.textContent = isRest ? '🩹 Rest Pass — on' : '🩹 Rest Pass';
+    restBtn.disabled = isFutureDay;
+    restBtn.onclick = async () => {
+      dailyState[iso] = dailyState[iso] || {};
+      dailyState[iso].__rest = !dailyState[iso].__rest;
+      await saveDaily(iso);
+      renderDailyList();
+      renderDailyStrip();
+      const streak = await computeStreak();
+      document.getElementById('streak-num').textContent = streak;
+    };
+  }
+  if (restNote) {
+    restNote.textContent = isRest
+      ? 'Streak held — counts as a deliberate rest, not a miss.'
+      : (isToday ? 'Hurt or need a recovery day? Bank a rest without breaking the streak.' : '');
+  }
 }
 
 async function renderDaily() {

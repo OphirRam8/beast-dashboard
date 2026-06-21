@@ -340,6 +340,15 @@ class Handler(SimpleHTTPRequestHandler):
             if checks is None:
                 local = load_json(DAILY_FILE)
                 checks = local.get(date, {})
+            else:
+                # Notion only stores the NN checkboxes; preserve client-side
+                # meta flags (e.g. __rest "Rest Pass") from the local store so
+                # a deliberate rest day survives the Notion round-trip.
+                local = load_json(DAILY_FILE)
+                meta = {k: v for k, v in (local.get(date) or {}).items()
+                        if k.startswith("__")}
+                if meta:
+                    checks = {**checks, **meta}
             self._send_json(200, {"date": date, "checks": checks})
             return
         if parsed.path == "/api/weekly":
