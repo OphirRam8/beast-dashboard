@@ -85,6 +85,12 @@ let viewingDateIso = null;      // YYYY-MM-DD — which daily-NN day the user is
 let setSyncStatus = () => {};
 let planData = null;            // loaded from data/plan.json
 let planViewWeek = null;        // which week# the Weekly Focus modal is showing
+let autoSyncTimer = null;       // debounce handle for weekly auto-sync
+let retryTimer = null;          // retry handle after a failed push
+let syncInFlight = false;       // a weekly push is currently running
+let resyncNeeded = false;       // edits landed mid-push → run once more after
+const AUTO_SYNC_DELAY = 1800;   // ms of quiet before the auto-push fires
+const RETRY_DELAY = 15000;      // ms before retrying a failed push
 
 // ── Helpers ───────────────────────────────────
 function todayIso() {
@@ -202,10 +208,28 @@ async function loadWeek(weekStart) {
 
 async function saveWeek(weekStart) {
   try { localStorage.setItem('beast.week.' + weekStart, JSON.stringify(weekSessions)); } catch(e) {}
-  await api('POST', '/api/weekly', { week: weekStart, sessions: weekSessions });
+  return await postOk('/api/weekly', { week: weekStart, sessions: weekSessions });
 }
 
-// ── Manual sync (no more auto-push-on-every-tap → no race → no duplicates) ──
+// POST that reports success — api() can't, because a 204 success and a network
+// error both come back as null. Auto-sync needs to know which actually happened.
+async function postOk(path, body) {
+  setSyncStatus('syncing');
+  try {
+    const r = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    setSyncStatus(r.ok ? 'synced' : 'error');
+    return r.ok;
+  } catch (e) {
+    console.warn('postOk fail', path, e);
+    setSyncStatus('error');
+    return false;
+  }
+}
+
+// ── Weekly auto-sync: debounced, single-flight, self-retrying ───────────────
+// Edits are instant + local; a couple seconds after you stop, they push on their
+// own. Each push rewrites just THIS week (server archives + rewrites), so Notion
+// mirrors the screen and can never pile duplicates. No button to remember.
 function dedupeSessions(arr) {
   const seen = new Set(); const out = [];
   for (const s of (arr || [])) {
@@ -222,30 +246,58 @@ function markDirty() {
     localStorage.setItem('beast.week.' + weekStartIso + '.dirty', '1');
   } catch (e) {}
   updateSyncButton();
+  scheduleAutoSync();
+}
+function scheduleAutoSync() {
+  clearTimeout(autoSyncTimer);
+  autoSyncTimer = setTimeout(autoSyncWeek, AUTO_SYNC_DELAY);
+}
+function scheduleRetry() {
+  clearTimeout(retryTimer);
+  retryTimer = setTimeout(() => { if (weekDirty) autoSyncWeek(); }, RETRY_DELAY);
+}
+async function autoSyncWeek() {
+  clearTimeout(autoSyncTimer);
+  if (!weekDirty) return;
+  if (syncInFlight) { resyncNeeded = true; return; }   // coalesce; re-run when the current push frees up
+  syncInFlight = true; resyncNeeded = false;
+  const targetWeek = weekStartIso;
+  updateSyncButton();
+  const ok = await saveWeek(targetWeek);   // server clears this week in Notion + rewrites it cleanly
+  syncInFlight = false;
+  if (ok) {
+    // only clear "dirty" if no fresh edits landed for this same week mid-push
+    if (!resyncNeeded && weekStartIso === targetWeek) {
+      weekDirty = false; pendingChanges = 0;
+      try { localStorage.removeItem('beast.week.' + targetWeek + '.dirty'); } catch (e) {}
+    }
+    clearTimeout(retryTimer); retryTimer = null;
+  } else {
+    weekDirty = true;
+    scheduleRetry();   // Mac asleep / tunnel hiccup — try again shortly
+  }
+  updateSyncButton();
+  if (resyncNeeded && weekDirty) { resyncNeeded = false; scheduleAutoSync(); }
+}
+// push right now — leaving the tab, going to background, or a manual tap
+function flushSyncNow() {
+  clearTimeout(autoSyncTimer);
+  if (weekDirty && !syncInFlight) autoSyncWeek();
 }
 function updateSyncButton() {
   const btn = document.getElementById('sync-week-btn');
   if (!btn) return;
-  if (weekDirty) {
-    btn.textContent = pendingChanges > 0 ? `⤴ Sync (${pendingChanges})` : '⤴ Sync';
+  if (syncInFlight) {
+    btn.textContent = '↻ Syncing…';
+    btn.classList.remove('hidden', 'synced'); btn.classList.add('dirty'); btn.disabled = true;
+  } else if (weekDirty) {
+    btn.textContent = pendingChanges > 0 ? `⤴ Sync now (${pendingChanges})` : '⤴ Sync now';
     btn.classList.remove('hidden', 'synced'); btn.classList.add('dirty'); btn.disabled = false;
   } else {
     btn.classList.add('hidden'); btn.classList.remove('dirty', 'synced');
   }
 }
-async function syncWeek() {
-  const btn = document.getElementById('sync-week-btn');
-  if (btn) { btn.disabled = true; btn.textContent = '⤴ Syncing…'; btn.classList.remove('dirty'); }
-  try {
-    await saveWeek(weekStartIso);   // POST → server clears the week in Notion + rewrites it cleanly
-    weekDirty = false; pendingChanges = 0;
-    try { localStorage.removeItem('beast.week.' + weekStartIso + '.dirty'); } catch (e) {}
-    if (btn) { btn.textContent = '✓ Synced'; btn.classList.add('synced'); setTimeout(updateSyncButton, 1600); }
-  } catch (e) {
-    weekDirty = true;
-    if (btn) { btn.disabled = false; btn.classList.add('dirty'); btn.textContent = '⤴ Sync — retry'; }
-  }
-}
+async function syncWeek() { flushSyncNow(); }   // manual button = flush immediately
 
 // ── Streak calc ───────────────────────────────
 async function computeStreak() {
@@ -731,6 +783,16 @@ async function init() {
   document.getElementById('sync-week-btn')?.addEventListener('click', syncWeek);
   document.getElementById('add-modal').addEventListener('click', (e) => {
     if (e.target.id === 'add-modal') closeAddModal();
+  });
+
+  // Auto-sync safety nets: flush pending weekly edits when the tab goes to the
+  // background or the network returns; a sendBeacon covers a hard close/reload.
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushSyncNow(); });
+  window.addEventListener('online', () => { if (weekDirty) autoSyncWeek(); });
+  window.addEventListener('pagehide', () => {
+    if (weekDirty && navigator.sendBeacon) {
+      try { navigator.sendBeacon('/api/weekly', new Blob([JSON.stringify({ week: weekStartIso, sessions: weekSessions })], { type: 'application/json' })); } catch (e) {}
+    }
   });
 
   // Refresh hero countdown every minute
